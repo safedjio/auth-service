@@ -28,7 +28,16 @@ public class CredentialService {
 
     @Transactional
     public void register(RegisterRequest request) {
-        log.info("Registering credentials for userId={}", request.getUserId());
+        createCredential(request, Role.USER);
+    }
+
+    @Transactional
+    public void registerWithRole(RegisterRequest request, Role role) {
+        createCredential(request, role);
+    }
+
+    private void createCredential(RegisterRequest request, Role role) {
+        log.info("Registering credentials for userId={}, role={}", request.getUserId(), role);
 
         if (credentialRepository.existsByLogin(request.getLogin())) {
             log.warn("Registration rejected, login already taken: {}", request.getLogin());
@@ -43,7 +52,7 @@ public class CredentialService {
                 .userId(request.getUserId())
                 .login(request.getLogin())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .role(request.getRole())
+                .role(role)
                 .active(true)
                 .build();
 
@@ -95,11 +104,36 @@ public class CredentialService {
 
     public Map<String, Object> validate(TokenRequest request) {
         Claims claims = jwtService.parseAccessTokenClaims(request.getToken());
+        Long userId = jwtService.extractUserId(claims);
+
+        Credential credential = credentialRepository.findByUserId(userId)
+                .orElseThrow(() -> {
+                    log.warn("Validate failed, no credentials for userId={}", userId);
+                    return new InvalidCredentialsException("Unknown user");
+                });
+
+        if (!credential.isActive()) {
+            log.warn("Validate rejected, account deactivated, userId={}", userId);
+            throw new InvalidCredentialsException("Account is deactivated");
+        }
+
         Map<String, Object> result = new HashMap<>();
         result.put("valid", true);
-        result.put("userId", jwtService.extractUserId(claims));
-        result.put("role", jwtService.extractRole(claims));
+        result.put("userId", userId);
+        result.put("role", credential.getRole());
         return result;
+    }
+
+    @Transactional
+    public void setActive(Long userId, boolean active) {
+        Credential credential = credentialRepository.findByUserId(userId)
+                .orElseThrow(() -> {
+                    log.warn("Set active failed, no credentials for userId={}", userId);
+                    return new InvalidCredentialsException("Unknown user");
+                });
+        credential.setActive(active);
+        credentialRepository.save(credential);
+        log.info("Credential active flag set to {} for userId={}", active, userId);
     }
 
     private TokenResponse issueTokens(Long userId, Role role) {

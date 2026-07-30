@@ -26,6 +26,5 @@ public class RegisterRequest {
     @Size(min = 8, max = 72, message = "password must be 8-72 characters")
     private String password;
 
-    @NotNull(message = "role is required")
     private Role role;
 }
