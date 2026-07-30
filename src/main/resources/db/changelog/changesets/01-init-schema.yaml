@@ -1,6 +1,6 @@
 databaseChangeLog:
   - changeSet:
-      id: 001-create-credentials-table
+      id: 01-init-schema
       author: safedjio
       preConditions:
         onFail: MARK_RAN
